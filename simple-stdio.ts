@@ -1,6 +1,6 @@
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
 const API_BASE = "https://hedgealphaoracle-production.up.railway.app";
@@ -86,26 +86,15 @@ function createMcpServer() {
 }
 
 const app = express();
-const transports: Record<string, SSEServerTransport> = {};
+app.use(express.json());
 
-app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
-  transports[transport.sessionId] = transport;
+app.all("/mcp", async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
   const server = createMcpServer();
   await server.connect(transport);
-  res.on("close", () => {
-    delete transports[transport.sessionId];
-  });
-});
-
-app.post("/messages", express.json(), async (req, res) => {
-  const sessionId = req.query.sessionId as string;
-  const transport = transports[sessionId];
-  if (!transport) {
-    res.status(404).json({ error: "Session not found" });
-    return;
-  }
-  await transport.handlePostMessage(req, res);
+  await transport.handleRequest(req, res);
 });
 
 app.get("/health", (req, res) => {
@@ -116,14 +105,14 @@ app.get("/", (req, res) => {
   res.json({
     name: "Nurse2Web3 HedgeAlphaOracle MCP Server",
     version: "4.1.0",
-    transport: "SSE",
-    endpoint: "/sse",
+    transport: "Streamable HTTP",
+    endpoint: "/mcp",
     tools: ["get_sentiment", "get_alpha", "get_premium", "get_fear_greed", "get_whale_alert", "get_portfolio_risk", "ping"],
     provider: "Nurse2Web3 — nurse2web3.com"
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`Nurse2Web3 HedgeAlphaOracle MCP server running on port ${PORT}`);
-  console.log(`SSE endpoint: http://localhost:${PORT}/sse`);
+  console.log(`Nurse2Web3 HedgeAlphaOracle MCP running on port ${PORT}`);
+  console.log(`MCP endpoint: /mcp`);
 });
