@@ -1,8 +1,10 @@
+import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 
 const API_BASE = "https://hedgealphaoracle-production.up.railway.app";
+const PORT = process.env.PORT || 8080;
 
 async function fetchSignal(endpoint: string): Promise<string> {
   const res = await fetch(`${API_BASE}${endpoint}`);
@@ -10,7 +12,7 @@ async function fetchSignal(endpoint: string): Promise<string> {
   return text;
 }
 
-async function main(): Promise<void> {
+function createMcpServer() {
   const mcpServer = new McpServer({
     name: "Nurse2Web3 HedgeAlphaOracle",
     version: "4.1.0",
@@ -80,11 +82,48 @@ async function main(): Promise<void> {
     content: [{ type: "text", text: "pong — Nurse2Web3 HedgeAlphaOracle MCP v4.1 online" }],
   }));
 
-  const transport = new StdioServerTransport();
-  await mcpServer.connect(transport);
+  return mcpServer;
 }
 
-main().catch(error => {
-  process.stderr.write(`Fatal error: ${error}\n`);
-  process.exit(1);
+const app = express();
+const transports: Record<string, SSEServerTransport> = {};
+
+app.get("/sse", async (req, res) => {
+  const transport = new SSEServerTransport("/messages", res);
+  transports[transport.sessionId] = transport;
+  const server = createMcpServer();
+  await server.connect(transport);
+  res.on("close", () => {
+    delete transports[transport.sessionId];
+  });
+});
+
+app.post("/messages", express.json(), async (req, res) => {
+  const sessionId = req.query.sessionId as string;
+  const transport = transports[sessionId];
+  if (!transport) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+  await transport.handlePostMessage(req, res);
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", service: "Nurse2Web3 HedgeAlphaOracle MCP", version: "4.1.0" });
+});
+
+app.get("/", (req, res) => {
+  res.json({
+    name: "Nurse2Web3 HedgeAlphaOracle MCP Server",
+    version: "4.1.0",
+    transport: "SSE",
+    endpoint: "/sse",
+    tools: ["get_sentiment", "get_alpha", "get_premium", "get_fear_greed", "get_whale_alert", "get_portfolio_risk", "ping"],
+    provider: "Nurse2Web3 — nurse2web3.com"
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`Nurse2Web3 HedgeAlphaOracle MCP server running on port ${PORT}`);
+  console.log(`SSE endpoint: http://localhost:${PORT}/sse`);
 });
