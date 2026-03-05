@@ -1,0 +1,13 @@
+{
+  "name": "nurse2web3-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx simple-stdio.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "tsx": "^4.0.0",
+    "zod": "^3.0.0"
+  }
+}
